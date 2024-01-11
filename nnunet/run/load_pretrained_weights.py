@@ -12,13 +12,14 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 import torch
+from torch.nn.parallel import DistributedDataParallel
 
 
 def load_pretrained_weights(network, fname, verbose=False):
     """
     THIS DOES NOT TRANSFER SEGMENTATION HEADS!
     """
-    saved_model = torch.load(fname)
+    saved_model = torch.load(fname, map_location="cpu")
     pretrained_dict = saved_model['state_dict']
 
     new_state_dict = {}
@@ -34,7 +35,9 @@ def load_pretrained_weights(network, fname, verbose=False):
 
     pretrained_dict = new_state_dict
 
-    model_dict = network.state_dict()
+    is_ddp = isinstance(network, DistributedDataParallel)
+    model_dict = network.state_dict() if not is_ddp else network.module.state_dict()
+
     ok = True
     for key, _ in model_dict.items():
         if ('conv_blocks' in key):
@@ -56,7 +59,10 @@ def load_pretrained_weights(network, fname, verbose=False):
             for key, _ in pretrained_dict.items():
                 print(key)
         print("################### Done ###################")
-        network.load_state_dict(model_dict)
+        if is_ddp:
+            network.module.load_state_dict(model_dict)
+        else:
+            network.load_state_dict(model_dict)
     else:
         raise RuntimeError("Pretrained weights are not compatible with the current network architecture")
 
